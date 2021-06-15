@@ -1,3 +1,4 @@
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -7,9 +8,9 @@ import 'package:weather_project/bloc/FavoriteBloc.dart';
 import 'package:weather_project/bloc/FetchDataBloc.dart';
 import 'package:weather_project/data/models/favorite.dart';
 import 'package:weather_project/data/models/weather.dart';
-import 'package:weather_project/data/source/Dao.dart';
 import 'package:weather_project/data/source/NetworkService.dart';
 import 'package:intl/intl.dart';
+import 'package:weather_project/widgets/WeatherIcons.dart';
 
 import 'Details.dart';
 
@@ -19,86 +20,94 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+
   NetworkService networkService = NetworkService();
   late FetchDataBloc weatherBloc;
   late FavoriteBloc favoriteBloc;
-  String query = '';
-  bool isSearchPressed = false;
   final TextEditingController _textEditingController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<Favorite> favoriteList = [];
   var _scaffoldKey = new GlobalKey<ScaffoldState>();
-
+  bool isDefaultSet = true;
   String savedCity = "";
-
-
+  bool isSearchPressed = false;
 
   @override
   void initState() {
     super.initState();
     weatherBloc = BlocProvider.of<FetchDataBloc>(context);
-    void getPreference() async {
-      final prefs = await SharedPreferences.getInstance();
-      setState((){
-        savedCity = prefs.getString('defaultCity') ?? "";
-        weatherBloc.add(FetchEvent(savedCity));
-      });
-    }
 
     getPreference();
-    // if(savedCity != ''){
-    //   query = savedCity;
-    // }
-
-
 
     favoriteBloc = BlocProvider.of<FavoriteBloc>(context);
     favoriteBloc.add(GetAllFavoritesEvent());
-    // FavoriteDao().getFavorites().then((value) => favoriteList.addAll(value));
-
   }
 
+  void getPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      savedCity = prefs.getString('defaultCity') ?? "";
+      savedCity == ""
+          ? isDefaultSet = false
+          : weatherBloc.add(FetchEvent(savedCity));
 
-
-
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    print('savedCity: $savedCity');
     return Scaffold(
-      appBar: AppBar(
-        key: _scaffoldKey,
-        title: isSearchPressed
-            ? TextField(
-          controller: _textEditingController,
-          decoration: InputDecoration(
-              filled: true,
-              fillColor: Colors.white,
-              prefixIcon: Icon(Icons.search),
-              hintText: 'Search'),
-          textInputAction: TextInputAction.search,
-          onSubmitted: (query) {
-            weatherBloc.add(FetchEvent(query));
-            _scrollController.animateTo(0,
-                duration: Duration(milliseconds: 500),
-                curve: Curves.easeInOut);
-          },
-        )
-            : Text('The Weather App'),
-        centerTitle: true,
-        elevation: 4,
-        backgroundColor: Color(0xFF1e1942),
-        actions: [
-          IconButton(
-              onPressed: () {
-                setState(() {
-                  isSearchPressed = !isSearchPressed;
-                });
-              },
-              icon: isSearchPressed ? Icon(Icons.clear) : Icon(Icons.search))
-        ],
-      ),
-      body: Search(_scrollController, favoriteList, favoriteBloc, weatherBloc),
+      appBar: buildAppBar(),
+      body: Search(_scrollController, favoriteList, favoriteBloc, weatherBloc,
+          savedCity, isDefaultSet),
+    );
+  }
+
+  AppBar buildAppBar() {
+    return AppBar(
+      key: _scaffoldKey,
+      title: isSearchPressed
+          ? TextField(
+        controller: _textEditingController,
+        decoration: InputDecoration(
+            filled: true,
+            fillColor: Colors.white,
+            prefixIcon: Icon(Icons.search),
+            suffixIcon: IconButton(
+              icon: Icon(Icons.backspace),
+              onPressed: () { _textEditingController.text = ''; },
+            ),
+            hintText: 'Search'),
+        textInputAction: TextInputAction.search,
+        onSubmitted: (query) {
+          setState(() {
+            isDefaultSet = true;
+          });
+          weatherBloc.add(FetchEvent(query));
+          _scrollController.animateTo(0,
+              duration: Duration(milliseconds: 500),
+              curve: Curves.easeInOut);
+        },
+      )
+          : Text('The Weather App'),
+      centerTitle: true,
+      elevation: 4,
+      backgroundColor: Color(0xFF1e1942),
+      actions: [
+        // IconButton(
+        //   icon: Icon(Icons.backspace, color: isSearchPressed ? Colors.white : Colors.transparent),
+        //   onPressed: () {
+        //     _textEditingController.text = '';
+        //   },),
+        IconButton(
+            onPressed: () {
+              setState(() {
+                isSearchPressed = !isSearchPressed;
+              });
+            },
+            icon: isSearchPressed ? Icon(Icons.clear) : Icon(Icons.search)),
+
+      ],
     );
   }
 }
@@ -108,8 +117,11 @@ class Search extends StatefulWidget {
   final List<Favorite> list;
   final FavoriteBloc favoriteBloc;
   final FetchDataBloc weatherBloc;
+  final String savedCity;
+  final isDefaultSet;
 
-  const Search(this.scrollController, this.list, this.favoriteBloc, this.weatherBloc);
+  const Search(this.scrollController, this.list, this.favoriteBloc,
+      this.weatherBloc, this.savedCity, this.isDefaultSet);
 
   @override
   _SearchState createState() => _SearchState();
@@ -122,82 +134,68 @@ class _SearchState extends State<Search> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<FavoriteBloc, FavoriteState>(
-      builder: (context, state) {
-        if (state is FavoriteInitialState ||
-            state is FavoriteIsLoadingState) {
-          return Center(child: CircularProgressIndicator());
-        } else if (state is FavoriteLoadedState) {
-          favoriteList.clear();
-          favoriteList.addAll(state.favoriteList);
-          print(favoriteList.toString());
-          return CustomScrollView(
-            controller: widget.scrollController,
-            slivers: [
-              SliverAppBar(
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.only(
-                          bottomLeft: Radius.circular(30),
-                          bottomRight: Radius.circular(30))),
-                  // pinned: true,
-                  floating: true,
-                  expandedHeight: 180,
-                  flexibleSpace: Container(
-                    decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [Color(0xFF1e1942), Color(0xFF4270c7)])),
-                    child: FlexibleSpaceBar(
-                      background: Container(
-                        // padding: EdgeInsets.only(top: 8),
-                          child: Row(
+    return SingleChildScrollView(
+      controller: widget.scrollController,
+      scrollDirection: Axis.vertical,
+      child: Column(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF1e1942), Color(0xFFFFFFFF)],
+              ),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  height: 180,
+                  // padding: EdgeInsets.only(top: 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(left: 24),
+                        child: BoxedIcon(
+                          WeatherIcons.day_cloudy,
+                          color: Colors.white,
+                          size: 56,
+                        ),
+                      ),
+                      Center(
+                        child: Container(
+                          padding: EdgeInsets.only(left: 16.0, bottom: 16.0),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Padding(
-                                padding: const EdgeInsets.only(left: 24),
-                                child: BoxedIcon(
-                                  WeatherIcons.day_cloudy,
+                              Text(
+                                'Check the weather',
+                                textAlign: TextAlign.start,
+                                style: TextStyle(
                                   color: Colors.white,
-                                  size: 56,
+                                  fontSize: 22,
                                 ),
                               ),
-                              Center(
-                                child: Container(
-                                  padding: EdgeInsets.only(
-                                      left: 16.0, bottom: 16.0),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment
-                                        .center,
-                                    crossAxisAlignment: CrossAxisAlignment
-                                        .start,
-                                    children: [
-                                      Text(
-                                        'Check the weather',
-                                        textAlign: TextAlign.start,
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 22,
-                                        ),
-                                      ),
-                                      Text(
-                                        'Worldwide',
-                                        textAlign: TextAlign.start,
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 44,
-                                        ),
-                                      )
-                                    ],
-                                  ),
+                              Text(
+                                'Worldwide',
+                                textAlign: TextAlign.start,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 44,
                                 ),
-                              ),
+                              )
                             ],
-                          )),
-                    ),
-                  )),
-              SliverToBoxAdapter(
-                  child: BlocBuilder<FetchDataBloc, FetchDataState>(
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  child: widget.isDefaultSet
+                      ? BlocBuilder<FetchDataBloc, FetchDataState>(
                     builder: (context, state) {
                       if (state is FetchInitialState ||
                           state is FetchLoadingState) {
@@ -210,108 +208,142 @@ class _SearchState extends State<Search> {
                       } else if (state is FetchLoadedState) {
                         weather = state.weather;
                         return Center(
-                          child: DefaultCityCard(weather, favoriteList),
+                          child: DefaultCityCard(
+                              weather, favoriteList, widget.savedCity),
                         );
                       } else if (state is FetchErrorState) {
-                        return Center(child: Text('An error of network'));
+                        return Container(
+                            height: 250,
+                            child: Card(
+                              elevation: 8,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(32),
+                              ),
+                              child: Center(
+                                  child: Text('An Error occurred',
+                                      style: TextStyle(
+                                          fontStyle: FontStyle.italic))),
+                            ));
                       } else {
-                        return Center(child: Text('Some other error'));
+                        return Container(
+                            height: 250,
+                            child: Card(
+                              elevation: 8,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(32),
+                              ),
+                              child: Center(
+                                  child: Text('Some other error',
+                                      style: TextStyle(
+                                          fontStyle: FontStyle.italic))),
+                            ));
                       }
                     },
-                  )),
-              SliverList(
-                delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                    return Container(
-                        // color: index.isOdd ? Colors.white : Colors.black12,
-                        height: 80.0,
-
-                        child: Card(
-                          elevation: 4,
-                          child: ListTile(
-                            onTap: () {
-                              widget.weatherBloc.add(FetchEvent(favoriteList[index].cityName));
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => BlocProvider.value(
-                                      value: BlocProvider.of<FavoriteBloc>(context),
-                                      child: BlocBuilder<FetchDataBloc, FetchDataState>(
-                                        builder: (context, state) {
-                                          if (state is FetchInitialState ||
-                                              state is FetchLoadingState) {
-                                            return Container(
-                                              height: 150,
-                                              child: Center(
-                                                child: CircularProgressIndicator(),
-                                              ),
-                                            );
-                                          } else if (state is FetchLoadedState) {
-                                            weather = state.weather;
-                                            return Details(weather, favoriteList);
-                                          } else if (state is FetchErrorState) {
-                                            return Center(child: Text('An error occured'));
-                                          } else {
-                                            return Center(child: Text('An error occured'));
-                                          }
-                                        },
-                                      )
-                                  ),
-                                ),
-                              );
-                            },
-                            leading: CircleAvatar(
-                              radius: 25,
-                              child: Text('${favoriteList[index].cityName[0]}', style: TextStyle(fontSize: 28),),
-                              backgroundColor: Color(0xFF4270c7),
-                            ),
-                          title: Text('${favoriteList[index].cityName}', style: TextStyle(fontSize: 22),),
-                          ),
-                        )
-                        // Center(
-                        //   child: Text('${favoriteList[index].cityName}',
-                        //       textScaleFactor: 3),
-                        // )
-                    );
-                  },
-                  childCount: favoriteList.length,
+                  )
+                      : Container(
+                    height: 250,
+                    child: Card(
+                      elevation: 8,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(32),
+                      ),
+                      child: Center(
+                        child: Text(
+                          'No city set as default',
+                          style: TextStyle(fontStyle: FontStyle.italic),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-              )
-
-
-            ],
-          );
-        } else {
-          return Text('sss');
-        }
-      },
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 32.0),
+                  child: Text(
+                    'Favorites:',
+                    style: TextStyle(fontSize: 20),
+                  ),
+                )
+              ],
+            ),
+          ),
+          FavoriteListWidget(favoriteList: favoriteList, widget: widget)
+        ],
+      ),
     );
   }
 }
 
-class FavoriteList extends StatefulWidget {
-  final double weight;
+class FavoriteListWidget extends StatelessWidget {
+  const FavoriteListWidget({
+    Key? key,
+    required this.favoriteList,
+    required this.widget,
+  }) : super(key: key);
 
-  const FavoriteList(this.weight);
+  final List<Favorite> favoriteList;
+  final Search widget;
 
-  @override
-  _FavoriteListState createState() => _FavoriteListState();
-}
-
-class _FavoriteListState extends State<FavoriteList> {
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: widget.weight,
-      child: Center(child: Text('No favorites saved')),
-    );
+    return BlocBuilder<FavoriteBloc, FavoriteState>(builder: (context, state) {
+      if (state is FavoriteInitialState ||
+          state is FavoriteIsLoadingState) {
+        return Center(child: CircularProgressIndicator());
+      } else if (state is FavoriteLoadedState) {
+        favoriteList.clear();
+        favoriteList.addAll(state.favoriteList);
+        return ListView.builder(
+          scrollDirection: Axis.vertical,
+          shrinkWrap: true,
+          itemCount: favoriteList.length,
+          itemBuilder: (context, index) {
+            return Container(
+                height: 80.0,
+                child: Card(
+                  elevation: 4,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.all(8),
+                    onTap: () {
+                      widget.weatherBloc
+                          .add(FetchEvent(favoriteList[index].cityName));
+                    },
+                    leading: CircleAvatar(
+                      radius: 25,
+                      child: Text(
+                        '${favoriteList[index].cityName[0]}',
+                        style: TextStyle(fontSize: 28),
+                      ),
+                      backgroundColor: Color(0xFF4270c7),
+                    ),
+                    title: Text(
+                      '${favoriteList[index].cityName}',
+                      style: TextStyle(fontSize: 22),
+                    ),
+                  ),
+                )
+              // Center(
+              //   child: Text('${favoriteList[index].cityName}',
+              //       textScaleFactor: 3),
+              // )
+            );
+          },
+        );
+      } else {
+        return Center(
+          child: Text('Something went wrong'),
+        );
+      }
+    });
   }
 }
 
 class DefaultCityCard extends StatefulWidget {
   final Weather weather;
   final List<Favorite> favoriteList;
+  final String savedCity;
 
-  const DefaultCityCard(this.weather, this.favoriteList);
+
+  const DefaultCityCard(this.weather, this.favoriteList, this.savedCity);
 
   @override
   _DefaultCityCardState createState() => _DefaultCityCardState();
@@ -327,13 +359,6 @@ class _DefaultCityCardState extends State<DefaultCityCard> {
       children: [
         Container(
           padding: EdgeInsets.only(bottom: 16),
-          decoration: BoxDecoration(
-              gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0xFF4270c7), Color(0xFFf6f5fc)])),
-          // color: Color(0xFF4270e7),
-          // height: 30,
           child: Card(
             elevation: 8,
             shape: RoundedRectangleBorder(
@@ -355,10 +380,10 @@ class _DefaultCityCardState extends State<DefaultCityCard> {
                         style: TextStyle(fontSize: 36),
                         textAlign: TextAlign.center,
                       ),
-                      IconButton(
-                        onPressed: () {},
-                        icon: Icon(Icons.favorite),
-                      )
+                      Icon(Icons.assistant_photo, color: widget.savedCity == widget.weather.name
+                          ? Colors.green.shade900
+                          : Colors.transparent
+                          , semanticLabel: 'Default City',),
                     ],
                   ),
                   Container(
@@ -368,7 +393,6 @@ class _DefaultCityCardState extends State<DefaultCityCard> {
                     child: Text(
                       _format,
                       textAlign: TextAlign.start,
-                      // widget.weather.weather[0].description,
                       style: TextStyle(fontSize: 24),
                     ),
                   ),
@@ -376,7 +400,7 @@ class _DefaultCityCardState extends State<DefaultCityCard> {
                     children: [
                       Padding(
                         padding: const EdgeInsets.only(left: 16.0),
-                        child: WeatherIcon(widget.weather, Colors.black, 42),
+                        child: WeatherIcon(widget.weather.weather[0].main, Colors.black, 42),
                       ),
                       Expanded(
                         child: Padding(
@@ -419,27 +443,28 @@ class _DefaultCityCardState extends State<DefaultCityCard> {
                         ),
                         GestureDetector(
                           onTap: () {
-
                             Navigator.of(context).push(
                               MaterialPageRoute(
-                                builder: (_) => BlocProvider.value(
-                                  value: BlocProvider.of<FavoriteBloc>(context),
-                                  child:Details(widget.weather, widget.favoriteList)
-                                ),
+                                builder: (_) =>
+                                    BlocProvider.value(
+                                        value:
+                                        BlocProvider.of<FavoriteBloc>(context),
+                                        child: Details(widget.weather,
+                                            widget.favoriteList,
+                                            widget.savedCity)),
                               ),
                             );
                           },
-                          child: Row(
-                              children: [
-                                Text(
-                                  'More details',
-                                  style: TextStyle(fontStyle: FontStyle.italic),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 4.0),
-                                  child: Icon(Icons.arrow_right_alt_rounded),
-                                )
-                              ]),
+                          child: Row(children: [
+                            Text(
+                              'More details',
+                              style: TextStyle(fontStyle: FontStyle.italic),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4.0),
+                              child: Icon(Icons.arrow_right_alt_rounded),
+                            )
+                          ]),
                         )
                       ],
                     ),
@@ -448,71 +473,9 @@ class _DefaultCityCardState extends State<DefaultCityCard> {
               ),
             ),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 32.0),
-          child: Text(
-            'Favorites:',
-            style: TextStyle(fontSize: 20),
-          ),
         )
       ],
     );
   }
 }
 
-class WeatherIcon extends StatelessWidget {
-  final Weather weather;
-  final Color color;
-  final double size;
-
-  const WeatherIcon(this.weather, this.color, this.size);
-
-  @override
-  Widget build(BuildContext context) {
-    switch (weather.weather[0].main) {
-      case 'Thunderstorm':
-        return BoxedIcon(
-          WeatherIcons.thunderstorm,
-          color: color,
-          size: size,
-        );
-      case 'Drizzle':
-        return BoxedIcon(
-          WeatherIcons.raindrops,
-          color: color,
-          size: size,
-        );
-      case 'Rain':
-        return BoxedIcon(
-          WeatherIcons.rain,
-          color: color,
-          size: size,
-        );
-      case 'Snow':
-        return BoxedIcon(
-          WeatherIcons.snow,
-          color: color,
-          size: size,
-        );
-      case 'Clear':
-        return BoxedIcon(
-          WeatherIcons.day_sunny,
-          color: color,
-          size: size,
-        );
-      case 'Clouds':
-        return BoxedIcon(
-          WeatherIcons.cloudy,
-          color: color,
-          size: size,
-        );
-      default:
-        return BoxedIcon(
-          WeatherIcons.fog,
-          color: color,
-          size: size,
-        );
-    }
-  }
-}
